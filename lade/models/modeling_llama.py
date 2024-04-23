@@ -1485,6 +1485,7 @@ class LlamaForCausalLM(LlamaPreTrainedModel):
             ids_list = np.append(np.array(ids_list[0]), np.array(ids_list[1:]).transpose().flatten()).tolist()
             
         else:
+            #将past_token中非None的部分拼接到all_past列表中
             for ll in range(fill_level + 1):
                 all_past += past_tokens[ll]
                 attn_size += len(past_tokens[ll])
@@ -1505,6 +1506,7 @@ class LlamaForCausalLM(LlamaPreTrainedModel):
                     device=input_ids.device, dtype=input_ids.dtype)), dim=1)
 
         else:
+            #预热的时候，把一定正确的输出和随机选取的token拼在一起，并扩展position_ids
             input_ids = torch.cat((input_ids, torch.tensor(all_past, device=input_ids.device, dtype=input_ids.dtype).unsqueeze(0)), dim=1)
             position_ids = torch.cat((position_ids, torch.tensor(ids_list, device=input_ids.device, dtype=input_ids.dtype).unsqueeze(0)), dim=1)
             attention_mask = torch.cat((attention_mask, torch.ones(1, attn_size, \
@@ -1574,7 +1576,7 @@ class LlamaForCausalLM(LlamaPreTrainedModel):
             lguess = len(guess_tokens)
         else:
             lguess = 0
-
+        # 首token的logits,并且该token的logits一定是正确的。
         ret.out_logits = ret.logits[:,prefill_size - 1,:].to(input_ids.device) #decode logits
         assert fill_level != -1
         if lguess > 0:
@@ -1594,6 +1596,7 @@ class LlamaForCausalLM(LlamaPreTrainedModel):
             window = len(past_tokens[fill_level])
             start = ret.logits.size(1)-window
             end = ret.logits.size(1)
+            # start:end之间全部都是猜测的token的logits
             if swap_axis_for_flash:
                 #assert start == window
                 level = len(level_sizes) + 1

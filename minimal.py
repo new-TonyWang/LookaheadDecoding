@@ -27,16 +27,17 @@ input_text = (
 model_inputs = tokenizer(input_text, return_tensors='pt').to(torch_device)
 
 #warm up
-greedy_output = model.generate(**model_inputs, max_new_tokens=1)
+# greedy_output = model.generate(**model_inputs, max_new_tokens=1)
 #end warm up
 
 # generate 256 new tokens
-torch.cuda.synchronize()
-t0s = time.time()
-sample_output = model.generate(**model_inputs, max_new_tokens=256, do_sample=True, temperature=0.7,
-                        top_k=50, top_p=0.9)
-torch.cuda.synchronize()
-t1s = time.time()
+# torch.cuda.synchronize()
+# t0s = time.time()
+# # max_length 表示prompt+output 一起的数量，max_new_tokens仅表示output的数量
+# sample_output = model.generate(**model_inputs, max_new_tokens=256, do_sample=True, temperature=0.7,
+#                         top_k=50, top_p=0.9)
+# torch.cuda.synchronize()
+# t1s = time.time()
 
 torch.cuda.synchronize()
 t0g = time.time()
@@ -46,10 +47,10 @@ t1g = time.time()
 
 print("Output:\n" + 100 * '-')
 print("Greedy output: ", tokenizer.decode(greedy_output[0], skip_special_tokens=False))
-print("Sample output: ", tokenizer.decode(sample_output[0], skip_special_tokens=False))
+# print("Sample output: ", tokenizer.decode(sample_output[0], skip_special_tokens=False))
 
 print("Greedy Generated Tokens:", (greedy_output.numel() - model_inputs['input_ids'].numel()) ,"Generation Speed: ", (greedy_output.numel() - model_inputs['input_ids'].numel()) / (t1g - t0g), " tokens/s")
-print("Sample Generated Tokens:", (sample_output.numel() - model_inputs['input_ids'].numel()) ,"Generation Speed: ", (sample_output.numel() - model_inputs['input_ids'].numel()) / (t1s - t0s), " tokens/s")
+# print("Sample Generated Tokens:", (sample_output.numel() - model_inputs['input_ids'].numel()) ,"Generation Speed: ", (sample_output.numel() - model_inputs['input_ids'].numel()) / (t1s - t0s), " tokens/s")
 
 #python minimal.py #44 tokens/s
 #LOAD_LADE=1 USE_LADE=1 python minimal.py #74 tokens/s, 1.6x throughput without changing output distribution!

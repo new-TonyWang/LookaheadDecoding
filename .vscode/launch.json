@@ -1,0 +1,29 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Launch",
+            "program": "${workspaceFolder}/<program>",
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "run minimal.py",
+            "type": "debugpy",
+            "request": "launch",
+            "python": "/home/zinc/workspace/pyvenv/lookahead/bin/python3",
+            "program": "${workspaceFolder}/minimal.py",
+            "console": "integratedTerminal",
+            "env": {
+                "USE_LADE":"1",
+                "LOAD_LADE":"1",
+                // "USE_FLASH":"1"
+            }
+        }
+    ]
+}

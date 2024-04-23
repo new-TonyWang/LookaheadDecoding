@@ -320,7 +320,8 @@ def jacobi_sample_multilevel(
     POOL_FROM_PROMPT = CONFIG_MAP.get("POOL_FROM_PROMPT", 0)
     USE_AWQ = False #not support AWQ
     #IN FLASH ATTENTION WE REORDERED LOOKAHEAD WINDOW 
-
+    
+    # 猜测的token数量
     GUESS_SIZE = LEVEL - 1
     NOT_SEQ = 0
     CONTINUE_ALL = 0
@@ -863,6 +864,7 @@ def jacobi_greedy_search_multilevel(
     USE_AWQ = False #not support AWQ
     #IN FLASH ATTENTION WE REORDERED LOOKAHEAD WINDOW 
 
+    
     GUESS_SIZE = LEVEL - 1
     NOT_SEQ = 0
     CONTINUE_ALL = 0
@@ -898,7 +900,8 @@ def jacobi_greedy_search_multilevel(
         return all_old_tokens[-1]
 
     set_token = copy_from
-
+    
+    # past_tokens的总长度是 LEVEL-1, 但是在预热阶段
     past_tokens = [[set_token() for _ in range(WINDOW_SIZE + LEVEL - 3)]] + [None for _ in range(LEVEL - 2)]
     #past_tokens is the lookahead window. Current we initialize it with random copy from prompts
 
@@ -913,6 +916,7 @@ def jacobi_greedy_search_multilevel(
     guess_skip_dist = 0
 
     if POOL_FROM_PROMPT:
+        # 每一个token只保存GUESS_SET_SIZE个可能序列,每一个token后面会猜测LEVEL-1个词
         fill_pool_with_prompt(all_old_tokens, token_map, LEVEL, GUESS_SET_SIZE)
         
     if chat:
@@ -945,11 +949,12 @@ def jacobi_greedy_search_multilevel(
         ori_guess = None
         #set up guess_tokens for verification branch 
         # past_tokens[LEVEL - 2] is not None means we are still in warmup stage filling multi-level window
+        # lst_token 就是最后一个生成的token，如果past_tokens没有被填满的话，就不会有产生guess_tokens
         if past_tokens[LEVEL - 2] is not None and lst_token in token_map and GUESS_SET_SIZE > 0:  
             ###############NOT ENTER CURRENTLY
             guess_tokens_ = token_map[lst_token]
             guess_tokens = []
-            for tok in list(guess_tokens_):
+            for tok in list(guess_tokens_): #一次猜测多组
                 guess_tokens += list(tok)
             ori_guess = guess_tokens
             #shards guess_tokens on different GPUs
@@ -1039,14 +1044,16 @@ def jacobi_greedy_search_multilevel(
             assert fill_level == 0
             past_tokens[0] = past_tokens[0][1:] 
             past_tokens[1] = torch.argmax(outputs.inp_logits, dim=-1)[0].tolist()
-            
+            # prefill阶段，每一个token都输出下一个token的logits
+            # past_tokens[0] 是第一次从prompt随机填入的，并且删除了第一个token
+            # past_tokens[1] 是past_token[0]通过模型输出的token 
             if DIST_WORKERS > 1:
                 nn_past_tokens = [copy.deepcopy(past_tokens[1])]
                 torch.distributed.broadcast_object_list(nn_past_tokens, src=DIST_WORKERS - 1)
                 past_tokens[1] = nn_past_tokens[0]
 
             fill_level += 1
-        elif past_tokens[LEVEL - 2] is None: #filling multi-level window
+        elif past_tokens[LEVEL - 2] is None: #filling multi-level window，每一次推理都至少有一个是正确的，他们把正确的从past_tokens里面排除
             for level in range(fill_level + 1):
                 past_tokens[level] = past_tokens[level][1:] 
             current_past_tokens = torch.argmax(outputs.inp_logits, dim=-1)[0].tolist()
@@ -1115,7 +1122,7 @@ def jacobi_greedy_search_multilevel(
 
             update_token_map(token_map, lst_token, past_tokens, new_results, LEVEL, WINDOW_SIZE, GUESS_SET_SIZE)
 
-
+            #在past_tokens 全部填满之后会用新的覆盖老的，首先把前N-2个向前移动一位，然后把最新的赋值到最后一位
             if ALWAYS_FWD_ONE:
                 past_tokens[0] = past_tokens[1][1:]
                 for level in range(1, LEVEL - 2):
@@ -1154,8 +1161,9 @@ def jacobi_greedy_search_multilevel(
         else:
             guess_skip_dist = 0
             offset_kv_cache = outputs.step_len-len(guess_tokens)+max_hit_idx * GUESS_SIZE if max_hit > 0 else 0
+            # len(outputs.past_key_values)代表的是模型的层数，TinyLlama/TinyLlama-1.1B-Chat-v1.0有22层
             for idx, kv in enumerate(outputs.past_key_values):
-                #update kv-cache from verification branch  
+                #update kv-cache from verification branch，通过命中的长度更新kvcavhe
                 if max_hit > 0:
                     kv[0][:,:,outputs.kvcache_len:outputs.kvcache_len+max_hit,:] = kv[0][:,:,offset_kv_cache:offset_kv_cache+max_hit,:]
                     kv[1][:,:,outputs.kvcache_len:outputs.kvcache_len+max_hit,:] = kv[1][:,:,offset_kv_cache:offset_kv_cache+max_hit,:]
@@ -1192,7 +1200,8 @@ def jacobi_greedy_search_multilevel(
             else:
                 print(all_str[prev:],  flush=True, end="")
             prev = len(all_str)
-        
+
+        # 将猜测正确的输出拼接到input_ids之后
         input_ids = torch.cat([input_ids, torch.tensor(hits[:max_hit + 1], device=next_tokens.device, dtype=next_tokens.dtype).unsqueeze(0)], dim=-1)
         
         if streamer is not None:
